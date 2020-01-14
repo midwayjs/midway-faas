@@ -21,7 +21,6 @@ export class FCSpecBuilder extends SpecBuilder {
     const serviceData = this.getService();
     const functionsData: FCFunctionsStructure = this.getFunctions();
     const serviceName = serviceData.name;
-
     const template: FCSpec = {
       ROSTemplateFormatVersion: '2015-09-01',
       Transform: 'Aliyun::Serverless-2018-04-03',
