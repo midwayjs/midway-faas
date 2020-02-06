@@ -8,7 +8,7 @@
 import { FaaSStarterClass } from './utils';
 import { execSync } from 'child_process';
 import { resolve } from 'path';
-import { existsSync, writeFileSync, ensureDirSync } from 'fs-extra';
+import { existsSync, ensureDirSync } from 'fs-extra';
 import { loadSpec } from '@midwayjs/fcli-command-core';
 import { writeWrapper } from '@midwayjs/serverless-spec-builder';
 
@@ -28,6 +28,7 @@ export class InvokeCore {
   spec: any;
   buildDir: string;
   wrapperInfo: any;
+  tsBuildDir: string;
 
   constructor(options: InvokeOptions) {
     this.options = options;
@@ -46,7 +47,7 @@ export class InvokeCore {
       baseDir: this.buildDir,
       functionName
     });
-    await starter.start();
+    await starter.start(this.tsBuildDir ? { loadDir: [resolve(this.buildDir, 'dist')] } : undefined);
     this.starter = starter;
     return this.starter;
   }
@@ -69,6 +70,7 @@ export class InvokeCore {
   }
 
   async buildTS() {
+
     const { baseDir } = this.options;
     process.env.MIDWAY_TS_MODE = 'true';
     const tsconfig = resolve(baseDir, 'tsconfig.json');
@@ -76,19 +78,15 @@ export class InvokeCore {
     if (!existsSync(tsconfig)) {
       return;
     }
-    const distTsconfig = resolve(this.buildDir, 'tsconfig.json');
-    if (!existsSync(distTsconfig)) { // midway-core 扫描判断isTsMode需要
-      writeFileSync(distTsconfig, '{}');
-    }
     let tsc = 'tsc';
-    const tscBuildDir = resolve(this.buildDir, 'src');
+    this.tsBuildDir = resolve(this.buildDir, 'dist');
     try {
       tsc = resolve(require.resolve('typescript'), '../../bin/tsc');
     } catch (e) {
       return this.invokeError('need typescript');
     }
     try {
-      await execSync(`cd ${baseDir};${tsc} --inlineSourceMap --outDir ${tscBuildDir} --skipLibCheck --skipDefaultLibCheck`);
+      await execSync(`cd ${baseDir};${tsc} --inlineSourceMap --outDir ${this.tsBuildDir} --skipLibCheck --skipDefaultLibCheck`);
     } catch (e) {
       this.invokeError(e);
     }
@@ -132,7 +130,8 @@ export class InvokeCore {
         functions: {[this.options.functionName]: funcInfo}
       },
       distDir: this.buildDir,
-      starter
+      starter,
+      loadDir: this.tsBuildDir
     });
     return { fileName, handlerName: name };
   }

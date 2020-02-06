@@ -3,8 +3,7 @@ const { join } = require('path');
 invoke({
   functionDir: join(__dirname, 'fixtures/baseApp'),
   functionName: 'http',
-  data: [{ name: 'params' }],
-  debug: '9229'
+  data: [{ name: 'params' }]
 }).then(result => {
   console.log('result', result);
 });

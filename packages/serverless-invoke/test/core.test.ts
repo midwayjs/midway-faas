@@ -10,6 +10,7 @@ describe('/test/core.test.ts', () => {
     });
 
     const data = await invokeCore.invoke({});
+    console.log('data', data);
     assert(data && /hello/.test(data));
   });
 });
