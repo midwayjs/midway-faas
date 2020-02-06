@@ -16,7 +16,7 @@ const initializeMethod = async (config = {}) => {
     layers: [<%= layers.join(", ") %>]
   });
   starter = new FaaSStarter({ config, baseDir: __dirname });
-  await starter.start();
+  await starter.start(<% if (loadDir) { %>{ loadDir: ['<%=loadDir%>'] }<% } %>);
   inited = true;
 };
 
@@ -49,8 +49,9 @@ export function writeWrapper(options: {
   baseDir: string;
   distDir: string;
   starter: string;
+  loadDir?: string;
 }) {
-  const { service, distDir, starter, baseDir } = options;
+  const { service, distDir, starter, baseDir, loadDir } = options;
   const files = {};
   const functions = service.functions || {};
   for (const func in functions) {
@@ -96,6 +97,7 @@ export function writeWrapper(options: {
       starter,
       handlers: files[file].handlers,
       ...layers,
+      loadDir
     });
     writeFileSync(fileName, content);
   }
