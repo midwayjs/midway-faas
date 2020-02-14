@@ -27,7 +27,8 @@ export class PackagePlugin extends BasePlugin {
   // 代表构建产物的路径，非 ts 构建路径
   midwayBuildPath = (this.core.config.buildPath = join(
     this.servicePath,
-    '.serverless'
+    '.serverless',
+    'build'
   ));
   cacheSpec: any;
   codeAnalyzeResult: AnalyzeResult;
@@ -103,7 +104,8 @@ export class PackagePlugin extends BasePlugin {
       this.core.config.buildPath = join(
         this.servicePath,
         this.options.buildDir,
-        '.serverless'
+        '.serverless',
+        'build'
       );
       this.midwayBuildPath = this.core.config.buildPath;
     }

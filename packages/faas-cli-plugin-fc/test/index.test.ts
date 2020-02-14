@@ -21,7 +21,7 @@ describe('/test/index.test.ts', () => {
     core.addPlugin(AliyunFCPlugin);
     await core.ready();
     await core.invoke(['package']);
-    const buildPath = join(baseDir, '.serverless');
+    const buildPath = join(baseDir, '.serverless/build');
     assert(existsSync(join(buildPath, 'dist/index.js')));
     assert(existsSync(join(buildPath, 'node_modules')));
     assert(existsSync(join(buildPath, 'src')));
@@ -50,7 +50,7 @@ describe('/test/index.test.ts', () => {
     await core.ready();
     await core.invoke(['package']);
 
-    const buildPath = join(baseDir, '.serverless');
+    const buildPath = join(baseDir, '.serverless/build');
     assert(existsSync(join(buildPath, 'app')));
     assert(existsSync(join(buildPath, 'node_modules')));
     assert(existsSync(join(buildPath, 'config')));

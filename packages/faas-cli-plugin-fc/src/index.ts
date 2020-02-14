@@ -11,7 +11,7 @@ export class AliyunFCPlugin extends BasePlugin {
   options: any;
   provider = 'aliyun';
   servicePath = this.core.config.servicePath;
-  midwayBuildPath = join(this.servicePath, '.serverless');
+  midwayBuildPath = join(this.servicePath, '.serverless', 'build');
 
   hooks = {
     'package:generateSpec': async () => {

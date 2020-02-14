@@ -7,6 +7,7 @@ import * as assert from 'assert';
 describe('/test/package.test.ts', () => {
   describe('package base midway faas project', () => {
     const baseDir = resolve(__dirname, './fixtures/base-app');
+    const buildDir = resolve(baseDir, '.serverless', 'build');
 
     afterEach(async () => {
       await remove(join(baseDir, 'serverless.zip'));
@@ -28,12 +29,11 @@ describe('/test/package.test.ts', () => {
       core.addPlugin(PackagePlugin);
       await core.ready();
       await core.invoke(['package']);
-      const buildPath = join(baseDir, '.serverless');
-      assert(existsSync(join(buildPath, 'dist/index.js')));
-      assert(existsSync(join(buildPath, 'node_modules')));
-      assert(existsSync(join(buildPath, 'src')));
-      assert(existsSync(join(buildPath, 'package.json')));
-      assert(existsSync(join(buildPath, 'tsconfig.json')));
+      assert(existsSync(join(buildDir, 'dist/index.js')));
+      assert(existsSync(join(buildDir, 'node_modules')));
+      assert(existsSync(join(buildDir, 'src')));
+      assert(existsSync(join(buildDir, 'package.json')));
+      assert(existsSync(join(buildDir, 'tsconfig.json')));
       assert(existsSync(resolve(baseDir, 'serverless.zip')));
     });
     it('build target package', async () => {
@@ -54,7 +54,7 @@ describe('/test/package.test.ts', () => {
       await core.ready();
       await core.invoke(['package']);
 
-      const buildPath = join(baseDir, 'userbuild/.serverless');
+      const buildPath = join(baseDir, 'userbuild/.serverless/build');
       assert(existsSync(join(buildPath, 'dist/index.js')));
       assert(existsSync(join(buildPath, 'node_modules')));
       assert(existsSync(join(buildPath, 'src')));
@@ -80,7 +80,7 @@ describe('/test/package.test.ts', () => {
     await core.ready();
     await core.invoke(['package']);
 
-    const buildPath = join(baseDir, '.serverless');
+    const buildPath = join(baseDir, '.serverless/build');
     assert(existsSync(join(buildPath, 'dist/index.js')));
     assert(existsSync(join(buildPath, 'node_modules')));
     assert(existsSync(join(buildPath, 'src')));
@@ -109,7 +109,7 @@ describe('/test/package.test.ts', () => {
     await core.ready();
     await core.invoke(['package']);
 
-    const buildPath = join(baseDir, '.serverless');
+    const buildPath = join(baseDir, '.serverless/build');
     assert(existsSync(join(buildPath, 'app')));
     assert(existsSync(join(buildPath, 'node_modules')));
     assert(existsSync(join(buildPath, 'config')));
@@ -141,7 +141,7 @@ describe('/test/package.test.ts', () => {
       core.addPlugin(PackagePlugin);
       await core.ready();
       await core.invoke(['package']);
-      assert(existsSync(resolve(baseDir, '.serverless/dist/index.js')));
+      assert(existsSync(resolve(baseDir, '.serverless/build/dist/index.js')));
       assert(existsSync(resolve(baseDir, 'serverless.zip')));
     });
   });
