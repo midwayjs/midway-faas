@@ -13,7 +13,7 @@ import {
   MidwayRequestContainer,
   REQUEST_OBJ_CTX_KEY,
 } from '@midwayjs/core';
-import { FUNC_KEY, HANDLER_KEY } from '@midwayjs/decorator';
+import { FUNC_KEY, HANDLER_KEY, HandlerIntercept } from '@midwayjs/decorator';
 import SimpleLock from '@midwayjs/simple-lock';
 import * as compose from 'koa-compose';
 
@@ -55,6 +55,9 @@ export class FaaSStarter implements IFaaSStarter {
     this.globalMiddleware = options.middleware || [];
     this.logger = options.logger || console;
     this.baseDir = this.getBaseDir();
+
+    // register @Handler interceptor before IoC code scan
+    HandlerIntercept(this.handlerInterceptor);
 
     this.loader = new ContainerLoader({
       baseDir: this.baseDir,
@@ -178,6 +181,31 @@ export class FaaSStarter implements IFaaSStarter {
     );
   }
 
+  handlerInterceptor(target, propertykey, method, handlerMapping) {
+    return async function (...args) {
+      // @ts-ignore
+      const slef = this as any;
+
+      // 1. Find request ctx
+      const context = slef[REQUEST_OBJ_CTX_KEY];
+
+      // 2. Get @Handler proxy
+      let proxy;
+      try {
+        // Check if indexHandlerProxy exists for 'index.handler'
+        proxy = await context.requestContext.getAsync(
+          convertProxyId(handlerMapping)
+        );
+      } catch (err) {
+        // There is no proxy
+        return method.apply(slef, args);
+      }
+
+      // 4. Call proxy from remote
+      return proxy.handler(target, propertykey, handlerMapping, args, method);
+    };
+  }
+
   async start(
     opts: {
       disableAutoLoad?: boolean;
@@ -289,4 +317,12 @@ export class FaaSStarter implements IFaaSStarter {
     }
     return mwArr;
   }
+}
+
+// index.handler -> indexHandlerProxy
+function convertProxyId(handlerMapping) {
+  const [mod, method] = handlerMapping.split('.');
+  return `${mod}${method
+    .toLowerCase()
+    .replace(/^[a-z]/g, L => L.toUpperCase())}Proxy`;
 }
