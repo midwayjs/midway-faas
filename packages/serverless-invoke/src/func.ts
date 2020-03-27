@@ -5,8 +5,9 @@ import {
   copyFiles,
 } from '@midwayjs/faas-util-ts-compile';
 import { Locator } from '@midwayjs/locate';
-import { cleanTarget } from './utils';
+import { FaaSStarterClass, cleanTarget } from './utils';
 import { join, resolve, relative } from 'path';
+import { writeWrapper } from '@midwayjs/serverless-spec-builder';
 import {
   existsSync,
   move,
@@ -15,35 +16,33 @@ import {
   remove,
 } from 'fs-extra';
 
-interface InvokeOptions {
-  baseDir?: string; // 目录，默认为process.cwd
-  functionName: string; // 函数名
-  handler?: string; // 函数的handler方法
-  trigger?: string; // 触发器
-  buildDir?: string; // 构建目录
-  sourceDir?: string; // 函数源码目录
-  incremental?: boolean; // 开启增量编译 (会无视 clean true)
-  clean?: boolean; // 清理调试目录
-  verbose?: boolean; // 输出详细日志
-}
-
 export interface Instance {
+  args?: any;
+  functionName: string;
+  handler: string;
   baseDir: string;
   buildDir: string;
   sourceDir: string;
-  specFile: string;
-  package: {
-    include: any;
-    exclude;
+  specFile?: string;
+  spec?: {
+    package: {
+      include: any;
+      exclude;
+    };
+    provider: {
+      name: string;
+    }
   };
   debug: any;
   clean: boolean;
   incremental: boolean;
+  result: any;
+  starter?: any;
 }
 
 const lockMap = {};
 
-export const formatOptions = (options: InvokeOptions) => {
+export const formatOptions = (options) => {
   if (!options.baseDir) {
     options.baseDir = process.cwd();
   }
@@ -57,8 +56,8 @@ export const formatOptions = (options: InvokeOptions) => {
   return options;
 };
 
-export const copyFile = async (instance: Instance) => {
-  const packageObj: any = instance.package || {};
+export const HookCopyFile = async (instance: Instance) => {
+  const packageObj: any = instance.spec.package || {};
   return copyFiles({
     sourceDir: instance.baseDir,
     targetDir: instance.buildDir,
@@ -86,7 +85,7 @@ const waitForTsBuild = (buildLogPath, count?) => {
   });
 };
 
-export const buildTS = async (instance: Instance) => {
+export const HookBuildTS = async (instance: Instance) => {
   const { baseDir, buildDir, sourceDir, specFile, debug, clean, incremental } = instance;
   const tsconfig = resolve(baseDir, 'tsconfig.json');
   // 非ts
@@ -174,3 +173,92 @@ export const buildTS = async (instance: Instance) => {
     }
   });
 };
+
+const HookInvoke = async (instance: Instance) => {
+
+};
+
+const HookCleanTargetByInstance = async (instance: Instance) => {
+  if (instance.clean) {
+    await cleanTarget(instance.buildDir);
+  }
+};
+
+const makeWrapper = async (instance, starter: string) => {
+  const funcInfo = getFunctionInfo(instance);
+  const [handlerFileName, name] = funcInfo.handler.split('.');
+  const fileName = resolve(instance.buildDir, `${handlerFileName}.js`);
+
+  writeWrapper({
+    baseDir: instance.baseDir,
+    service: {
+      layers: instance.spec.layers,
+      functions: { [instance.functionName]: funcInfo },
+    },
+    distDir: instance.buildDir,
+    starter,
+  });
+  return { fileName, handlerName: name };
+};
+
+export const getFunctionInfo = (instance, functionName?) => {
+  return (
+    (instance.spec && instance.spec.functions && instance.spec.functions[functionName || instance.functionName]) ||
+    {}
+  );
+};
+
+export const getTrigger = (instance, triggerMap, args) => {
+  if (!triggerMap) {
+    return args;
+  }
+  let triggerName = instance.trigger;
+  if (!triggerName) {
+    const funcInfo = getFunctionInfo(instance);
+    if (funcInfo.events && funcInfo.events.length) {
+      triggerName = Object.keys(funcInfo.events[0])[0];
+    }
+  }
+  const EventClass = triggerMap[triggerName];
+  if (EventClass) {
+    return [new EventClass(...args)];
+  }
+  return args;
+};
+
+export const loadHandler = async (instance, starter: string) => {
+  const wrapperInfo = await makeWrapper(instance, starter);
+  const { fileName, handlerName } = wrapperInfo;
+  try {
+    const handler = require(fileName);
+    return handler[handlerName];
+  } catch (e) {
+    // this.invokeError(e);
+  }
+};
+
+export const getUserFaaSHandlerFunction = async (instance: Instance) => {
+  const handler = instance.handler || getFunctionInfo(instance).handler || '';
+  const starter = await getStarter(instance);
+  return starter.handleInvokeWrapper(handler);
+};
+
+export const getStarter = async (instance: Instance) => {
+  if (instance.starter) {
+    return instance.starter;
+  }
+  const starter = new FaaSStarterClass({
+    baseDir: instance.buildDir,
+    functionName: instance.functionName,
+  });
+  await starter.start();
+  instance.starter = starter;
+  return instance.starter;
+};
+
+export const Hooks = [
+  { hook: 'hookCopyFile', func: HookCopyFile },
+  { hook: 'hookBuildTS', func: HookBuildTS },
+  { hook: 'hookInvoke', func: HookInvoke },
+  { hook: 'hookCleanTarget', func: HookCleanTargetByInstance },
+];
