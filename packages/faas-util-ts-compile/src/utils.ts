@@ -123,7 +123,14 @@ export const copyFiles = async (options: ICopyOptions) => {
   );
 };
 
-export const interTsConfigMaker = (options) => {
+interface InterTsConfigOptions {
+  incremental: boolean;
+  outDir: string;
+  include: string[];
+  exclude: string[];
+}
+
+export const interTsConfigMaker = (options: InterTsConfigOptions) => {
   return {
     compileOnSave: true,
     compilerOptions: {
@@ -140,7 +147,7 @@ export const interTsConfigMaker = (options) => {
       pretty: true,
       declaration: true,
       jsx: 'react',
-      outDir: options.outdir,
+      outDir: options.outDir,
     },
     include: options.include || [],
     exclude: options.exclude || [],

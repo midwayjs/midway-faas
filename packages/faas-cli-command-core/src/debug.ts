@@ -1,4 +1,4 @@
-import { fork } from 'child_process';
+import { fork, execSync } from 'child_process';
 import * as minimist from 'minimist';
 export const debug = async (options) => {
   const { callback, debugFile, debug } = options;
@@ -16,7 +16,7 @@ export const debug = async (options) => {
   if (argv.debug && debugFile) {
     delete argv.debug;
     argv.debugInspectPort = debug || '9229';
-    fork(
+    const child = fork(
       debugFile,
       [
         'isDebuging',
@@ -30,7 +30,22 @@ export const debug = async (options) => {
         ]
       }
     );
+    child.on('message', (m) => {
+      if (m === 'childExit') {
+          process.exit();
+      }
+    });
+    process.on('SIGINT', () => {
+        execSync('kill -9 ' + child.pid);
+        child.kill();
+        process.exit();
+    });
     return;
+  }
+  if (argv.debugInspectPort) {
+    process.on('exit', () => {
+        process.send('childExit');
+    });
   }
   if (callback) {
     callback(argv);

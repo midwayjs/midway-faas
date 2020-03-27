@@ -9,8 +9,7 @@ describe('/test/main.test.ts', () => {
       functionDir: join(__dirname, 'fixtures/baseApp'),
       functionName: 'http',
       clean: false,
-      debugCb: () => {}
     });
-    assert(result.name === 123);
+    assert(result.body === 'hello http world');
   });
 });
