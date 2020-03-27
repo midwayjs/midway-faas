@@ -16,3 +16,12 @@ import { invoke } from '@midwayjs/serverless-invoke';
     });
 })();
 ```
+
+
+本地调用模块，既可以单独引用，又可以被插件所插入
+
+所有的方法都拆分为纯函数
+
+[
+    ''
+]

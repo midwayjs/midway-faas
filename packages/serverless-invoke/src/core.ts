@@ -5,24 +5,12 @@
   2. tsc编译用户代码到dist目录
   3. 开源版: 【创建runtime、创建trigger】封装为平台invoke包，提供getInvoke方法，会传入args与入口方法，返回invoke方法
 */
+import { Instance, copyFile, buildTS } from './func';
 import { FaaSStarterClass, cleanTarget } from './utils';
-import { join, resolve, relative } from 'path';
-import {
-  existsSync,
-  move,
-  writeFileSync,
-  ensureFileSync,
-  remove,
-} from 'fs-extra';
+import { resolve } from 'path';
 import { loadSpec, getSpecFile } from '@midwayjs/fcli-command-core';
 import { writeWrapper } from '@midwayjs/serverless-spec-builder';
-import { AnalyzeResult, Locator } from '@midwayjs/locate';
-import {
-  tsCompile,
-  tsIntegrationProjectCompile,
-  compareFileChange,
-  copyFiles,
-} from '@midwayjs/faas-util-ts-compile';
+import { AnalyzeResult } from '@midwayjs/locate';
 import { IInvoke } from './interface';
 const lockMap = {};
 interface InvokeOptions {
@@ -104,98 +92,20 @@ export abstract class InvokeCore implements IInvoke {
     });
   }
 
-  protected async buildTS() {
-    const { baseDir } = this.options;
-    const tsconfig = resolve(baseDir, 'tsconfig.json');
-    // 非ts
-    if (!existsSync(tsconfig)) {
-      return;
-    }
-    // 设置走编译，扫描 dist 目录
-    process.env.MIDWAY_TS_MODE = 'false';
-    const debugRoot = this.options.buildDir || '.faas_debug_tmp';
-    // 分析目录结构
-    const locator = new Locator(baseDir);
-    this.codeAnalyzeResult = await locator.run({
-      tsCodeRoot: this.options.sourceDir,
-      tsBuildRoot: debugRoot,
-    });
-    this.buildDir = this.codeAnalyzeResult.tsBuildRoot;
-    if (!this.codeAnalyzeResult.tsBuildRoot) {
-      return;
-    }
-    const buildLogPath = resolve(this.buildDir, '.faasTSBuildTime.log');
-    if (!lockMap[buildLogPath]) {
-      lockMap[buildLogPath] = 'waiting';
-    } else if (lockMap[buildLogPath] === 'waiting') {
-      await this.waitForTsBuild(buildLogPath);
-    }
-    if (existsSync(buildLogPath)) {
-      const fileChanges = await compareFileChange(
-        [
-          this.specFile,
-          `${relative(baseDir, this.codeAnalyzeResult.tsCodeRoot) || '.'}/**/*`,
-        ],
-        [buildLogPath],
-        { cwd: baseDir }
-      );
-      if (!fileChanges || !fileChanges.length) {
-        lockMap[buildLogPath] = true;
-        this.debug('Auto skip ts compile');
-        return;
-      }
-    }
-    lockMap[buildLogPath] = 'waiting';
-    ensureFileSync(buildLogPath);
-    writeFileSync(buildLogPath, `ts build at ${Date.now()}`);
-    // clean directory first
-    if (this.options.clean) {
-      await cleanTarget(this.buildDir);
-    }
-    const opts = this.options.incremental ? { overwrite: true } : {};
-    try {
-      if (this.codeAnalyzeResult.integrationProject) {
-        // 一体化调整目录
-        await tsIntegrationProjectCompile(baseDir, {
-          buildRoot: this.buildDir,
-          tsCodeRoot: this.codeAnalyzeResult.tsCodeRoot,
-          incremental: this.options.incremental,
-          tsConfig: {
-            compilerOptions: {
-              sourceRoot: this.codeAnalyzeResult.tsCodeRoot, // for sourceMap
-            },
-          },
-          clean: this.options.clean,
-        });
-      } else {
-        await tsCompile(baseDir, {
-          tsConfigName: 'tsconfig.json',
-          tsConfig: {
-            compilerOptions: {
-              sourceRoot: resolve(baseDir, 'src'), // for sourceMap
-            },
-          },
-          clean: this.options.clean,
-        });
-        await move(join(baseDir, 'dist'), join(this.buildDir, 'dist'), opts);
-      }
-    } catch (e) {
-      await remove(buildLogPath);
-      lockMap[buildLogPath] = false;
-      throw new Error(`Typescript Build Error, Please Check Your FaaS Code!`);
-    }
-    lockMap[buildLogPath] = true;
-    // 针对多次调用清理缓存
-    Object.keys(require.cache).forEach(path => {
-      if (path.indexOf(this.buildDir) !== -1) {
-        delete require.cache[path];
-      }
-    });
-  }
-
   public async invoke(...args: any) {
-    await this.copyFile();
-    await this.buildTS();
+    const instance: Instance = {
+      baseDir: this.baseDir,
+      buildDir: this.buildDir,
+      package: this.spec.package,
+      sourceDir: this.options.sourceDir,
+      specFile: this.specFile,
+      clean: this.options.clean,
+      incremental: this.options.incremental,
+      debug: this.debug
+    };
+
+    await copyFile(instance);
+    await buildTS(instance);
     const invoke = await this.getInvokeFunction();
     const result = await invoke(...args);
     if (this.options.clean) {
@@ -220,19 +130,6 @@ export abstract class InvokeCore implements IInvoke {
     } catch (e) {
       this.invokeError(e);
     }
-  }
-
-  protected async copyFile() {
-    const packageObj: any = this.spec.package || {};
-    return copyFiles({
-      sourceDir: this.baseDir,
-      targetDir: this.buildDir,
-      include: packageObj.include,
-      exclude: packageObj.exclude,
-      log: path => {
-        this.debug('copy file', path);
-      },
-    });
   }
 
   // 写入口
