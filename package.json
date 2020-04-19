@@ -8,14 +8,15 @@
     "@types/mocha": "^5.2.5",
     "@types/node": "^10.12.18",
     "benchmark": "^2.1.4",
-    "gh-pages": "^1.2.0",
     "lerna": "3",
     "lerna-relinker": "^1.4.0",
     "opencollective": "^1.0.3",
     "opencollective-postinstall": "^2.0.2",
     "rimraf": "^3.0.0",
     "typedoc": "^0.11.0",
-    "typescript": "^3.8.3"
+    "typescript": "^3.8.3",
+    "vuepress": "^1.4.1",
+    "vuepress-plugin-yuque": "^0.6.1"
   },
   "scripts": {
     "autod": "lerna run autod",
@@ -33,7 +34,8 @@
     "build": "sh scripts/build.sh",
     "prettier": "prettier --write 'packages/**/*.ts'",
     "authors": "git log --format='%aN <%aE>' | sort -u > AUTHORS",
-    "site": "vuepress dev docs"
+    "docs:dev": "vuepress dev docs",
+    "docs:build": "vuepress build docs"
   },
   "keywords": [
     "serverless",

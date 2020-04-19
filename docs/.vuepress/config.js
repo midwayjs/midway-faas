@@ -57,4 +57,12 @@ module.exports = {
       },
     ],
   },
+  plugins: [
+    [
+      'vuepress-plugin-yuque',
+      {
+        repoUrl: 'https://www.yuque.com/midwayjs/faas',
+      },
+    ],
+  ],
 };
