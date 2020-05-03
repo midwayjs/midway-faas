@@ -6,6 +6,13 @@ import {
 import { Context } from '@midwayjs/serverless-http-parser';
 import * as util from 'util';
 
+const isLocalEnv = () => {
+  return (
+    process.env.MIDWAY_SERVER_ENV === 'local' ||
+    process.env.NODE_ENV === 'local'
+  );
+};
+
 export class FCRuntime extends ServerlessLightRuntime {
   /**
    * for handler wrapper
@@ -110,21 +117,21 @@ export class FCRuntime extends ServerlessLightRuntime {
         if (!['content-length'].includes(key)) {
           if ('set-cookie' === key && !isHTTPMode) {
             // unsupport multiple cookie when use apiGateway
-            newHeader[key] = ctx.res.headers[key][0];
-            if (ctx.res.headers[key].length > 1) {
+            newHeader[ key ] = ctx.res.headers[ key ][ 0 ];
+            if (ctx.res.headers[ key ].length > 1) {
               ctx.logger.warn(
                 `[fc-starter]: unsupport multiple cookie when use apiGateway`
               );
             }
           } else {
-            newHeader[key] = ctx.res.headers[key];
+            newHeader[ key ] = ctx.res.headers[ key ];
           }
         }
       }
 
       if (res.setHeader) {
         for (const key in newHeader) {
-          res.setHeader(key, newHeader[key]);
+          res.setHeader(key, newHeader[ key ]);
         }
       }
 
@@ -142,7 +149,22 @@ export class FCRuntime extends ServerlessLightRuntime {
         headers: newHeader,
         body: ctx.body,
       };
-    });
+    })
+      .catch((err) => {
+        if (isLocalEnv()) {
+          ctx.logger.error(err);
+        }
+        if (res.send) {
+          res.setStatusCode(500);
+          res.send(isLocalEnv() ? err.stack : 'Internal Server Error');
+        }
+        return {
+          isBase64Encoded: false,
+          statusCode: 500,
+          headers: {},
+          body: isLocalEnv() ? err.stack : 'Internal Server Error',
+        };
+      });
   }
 
   async wrapperEventInvoker(handler, event, context) {
