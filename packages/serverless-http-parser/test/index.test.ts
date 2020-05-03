@@ -115,6 +115,10 @@ describe('test http parser', () => {
     context.cookies.set('bbb', '11111');
     context.cookies.set('ccc', '22');
     assert(context.res.headers['set-cookie'].length === 2);
+
+    context.path = '/test/value1';
+    assert(context.path === '/test/value1');
+    assert(context.request.path === '/test/value1');
   });
 
   it('should parser fc http event', () => {

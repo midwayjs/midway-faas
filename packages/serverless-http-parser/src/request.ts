@@ -126,6 +126,10 @@ export class Request implements FaaSHTTPRequest {
     return this[EVENT].path;
   }
 
+  set path(value) {
+    this[EVENT].path = value;
+  }
+
   get pathParameters() {
     return this[EVENT].pathParameters || [];
   }

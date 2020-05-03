@@ -67,6 +67,10 @@ export class Context implements FaaSHTTPContext {
     return this.req.path;
   }
 
+  set path(value) {
+    this.req.path = value;
+  }
+
   get query() {
     return this.req.query;
   }
