@@ -1,8 +1,15 @@
 import { ServerlessLightRuntime } from '@midwayjs/runtime-engine';
-import { Context } from '@midwayjs/serverless-http-parser';
+import { Application } from '@midwayjs/serverless-http-parser';
 import { SCF } from '@midwayjs/faas-typings';
 
 export class SCFRuntime extends ServerlessLightRuntime {
+  app;
+  respond;
+
+  init() {
+    this.app = new Application();
+  }
+
   /**
    * for handler wrapper
    * @param handler
@@ -21,55 +28,61 @@ export class SCFRuntime extends ServerlessLightRuntime {
     event: SCF.APIGatewayEvent,
     context: SCF.RequestContext
   ) {
-    const ctx: Context & { logger?: any } = new Context(event, context);
-    ctx.logger = console;
-    const args = [ctx, event];
+    if (!this.respond) {
+      this.respond = this.app.callback();
+    }
 
-    const result = await this.invokeHandlerWrapper(context, async () => {
-      if (!handler) {
-        return this.defaultInvokeHandler(...args);
+    return this.respond.apply(this.respond, [
+      event,
+      context,
+      (ctx) => {
+        return this.invokeHandlerWrapper(ctx, async () => {
+          if (!handler) {
+            return this.defaultInvokeHandler.apply(this, [ctx, event]);
+          }
+          return handler.apply(handler, [ctx, event]);
+        }).then(result => {
+          let encoded = false;
+          if (result) {
+            ctx.body = result;
+          }
+
+          const setContentType = (type: string) => {
+            if (!ctx.type) {
+              ctx.type = type;
+            }
+          };
+
+          if (typeof ctx.body === 'string') {
+            setContentType('text/plain');
+          }
+
+          if (Buffer.isBuffer(ctx.body)) {
+            encoded = true;
+            setContentType('application/octet-stream');
+            ctx.body = ctx.body.toString('base64');
+          } else if (typeof ctx.body === 'object') {
+            setContentType('application/json');
+            ctx.body = JSON.stringify(ctx.body);
+          }
+
+          const newHeader = {};
+          for (const key in ctx.res.headers) {
+            // The length after base64 is wrong.
+            if (!['content-length'].includes(key)) {
+              newHeader[key] = ctx.res.headers[key];
+            }
+          }
+
+          return {
+            isBase64Encoded: encoded,
+            statusCode: ctx.status,
+            headers: newHeader,
+            body: ctx.body,
+          };
+        });
       }
-      return handler.apply(handler, args);
-    });
-
-    let encoded = false;
-    if (result) {
-      ctx.body = result;
-    }
-
-    const setContentType = (type: string) => {
-      if (!ctx.type) {
-        ctx.type = type;
-      }
-    };
-
-    if (typeof ctx.body === 'string') {
-      setContentType('text/plain');
-    }
-
-    if (Buffer.isBuffer(ctx.body)) {
-      encoded = true;
-      setContentType('application/octet-stream');
-      ctx.body = ctx.body.toString('base64');
-    } else if (typeof ctx.body === 'object') {
-      setContentType('application/json');
-      ctx.body = JSON.stringify(ctx.body);
-    }
-
-    const newHeader = {};
-    for (const key in ctx.res.headers) {
-      // The length after base64 is wrong.
-      if (!['content-length'].includes(key)) {
-        newHeader[key] = ctx.res.headers[key];
-      }
-    }
-
-    return {
-      isBase64Encoded: encoded,
-      statusCode: ctx.status,
-      headers: newHeader,
-      body: ctx.body,
-    };
+    ]);
   }
 
   async wrapperEventInvoker(handler, event: any, context: SCF.RequestContext) {
@@ -82,7 +95,7 @@ export class SCFRuntime extends ServerlessLightRuntime {
     // 其他事件场景
     return this.invokeHandlerWrapper(context, async () => {
       if (!handler) {
-        return this.defaultInvokeHandler(...args);
+        return this.defaultInvokeHandler.apply(this, args);
       }
       return handler.apply(handler, args);
     });
@@ -91,6 +104,10 @@ export class SCFRuntime extends ServerlessLightRuntime {
   async beforeInvokeHandler(context) {}
 
   async afterInvokeHandler(err, result, context) {}
+
+  getApplication() {
+    return this.app;
+  }
 }
 
 function isHttpEvent(event): event is SCF.APIGatewayEvent {

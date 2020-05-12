@@ -1,4 +1,4 @@
-import { FaaSContext, IFaaSStarter } from './interface';
+import { FaaSContext, IFaaSApplication, IFaaSStarter } from './interface';
 import { dirname, join, resolve } from 'path';
 import {
   ContainerLoader,
@@ -7,16 +7,11 @@ import {
   listModule,
   listPreloadModule,
   MidwayContainer,
+  MidwayProcessTypeEnum,
   MidwayRequestContainer,
   REQUEST_OBJ_CTX_KEY,
-  MidwayProcessTypeEnum,
 } from '@midwayjs/core';
-import {
-  APPLICATION_KEY,
-  FUNC_KEY,
-  LOGGER_KEY,
-  PLUGIN_KEY,
-} from '@midwayjs/decorator';
+import { APPLICATION_KEY, FUNC_KEY, LOGGER_KEY, PLUGIN_KEY, } from '@midwayjs/decorator';
 import SimpleLock from '@midwayjs/simple-lock';
 import * as compose from 'koa-compose';
 
@@ -43,6 +38,7 @@ export class FaaSStarter implements IFaaSStarter {
   protected logger;
   protected initializeContext;
   private lock = new SimpleLock();
+  private webApplication: IFaaSApplication;
 
   constructor(
     options: {
@@ -53,14 +49,23 @@ export class FaaSStarter implements IFaaSStarter {
       preloadModules?: any[];
       initializeContext?: object;
       logger?: any;
+      applicationAdapter?: {
+        getApplication(): IFaaSApplication;
+      };
     } = {}
   ) {
     this.appDir = options.baseDir || process.cwd();
     this.globalConfig = options.config || {};
+    /**
+     * @deprecated
+     */
     this.globalMiddleware = options.middleware || [];
     this.logger = options.logger || console;
     this.baseDir = this.getFaaSBaseDir();
     this.initializeContext = options.initializeContext || {};
+    this.webApplication = this.defineApplicationProperties(
+      options.applicationAdapter?.getApplication() || {}
+    );
 
     this.loader = new ContainerLoader({
       baseDir: this.baseDir,
@@ -117,7 +122,7 @@ export class FaaSStarter implements IFaaSStarter {
 
   private registerDecorator() {
     this.loader.registerHook(APPLICATION_KEY, () => {
-      return this;
+      return this.webApplication;
     });
     this.loader.registerHook(PLUGIN_KEY, (key, target) => {
       const ctx = target[REQUEST_OBJ_CTX_KEY] || {};
@@ -147,12 +152,10 @@ export class FaaSStarter implements IFaaSStarter {
 
       if (funOptions && funOptions.mod) {
         // invoke middleware, just for http
-        let fnMiddlewere = [];
-        fnMiddlewere = fnMiddlewere.concat(this.globalMiddleware);
-        fnMiddlewere = fnMiddlewere.concat(funOptions.middleware);
+        let fnMiddlewere = [].concat(funOptions.middleware);
         if (fnMiddlewere.length) {
-          const mw: any[] = await this.formatMiddlewares(fnMiddlewere);
-          mw.push(async ctx => {
+          const mw: any[] = await this.loadMiddleware(fnMiddlewere);
+          mw.push(async (ctx) => {
             // invoke handler
             const result = await this.invokeHandler(funOptions, ctx, args);
             if (!ctx.body) {
@@ -187,7 +190,7 @@ export class FaaSStarter implements IFaaSStarter {
       this.defaultHandlerMethod;
     if (funModule[handlerName]) {
       // invoke real method
-      return funModule[handlerName](...args);
+      return funModule[handlerName].apply(funModule, args);
     }
   }
 
@@ -229,14 +232,14 @@ export class FaaSStarter implements IFaaSStarter {
           descriptor;
           middleware: string[];
         }> = getClassMetadata(FUNC_KEY, funModule);
-        funOptions.map(opts => {
+        funOptions.map((opts) => {
           // { method: 'handler', data: 'index.handler' }
           const handlerName = opts.funHandler
             ? // @Func(key), if key is set
               // or @Func({ handler })
-              opts.funHandler
+            opts.funHandler
             : // else use ClassName.mehtod as handler key
-              covertId(funModule.name, opts.key);
+            covertId(funModule.name, opts.key);
           this.funMappingStore.set(handlerName, {
             middleware: opts.middleware || [],
             mod: funModule,
@@ -251,6 +254,13 @@ export class FaaSStarter implements IFaaSStarter {
         // preload init context
         await this.getApplicationContext().getAsync(module);
       }
+
+      // load global web middleware
+      const globalMW = await this.loadMiddleware(this.globalMiddleware);
+      for(const mw of globalMW) {
+        this.webApplication.use(mw as any);
+      }
+
       // now only for test case
       if (typeof opts.cb === 'function') {
         await opts.cb();
@@ -270,7 +280,9 @@ export class FaaSStarter implements IFaaSStarter {
       );
     }
     if (!context.env) {
-      context.env = this.getEnv();
+      context.env = this.getApplicationContext()
+        .getEnvironmentService()
+        .getCurrentEnvironment();
     }
     if (!context.logger) {
       context.logger = this.logger;
@@ -278,70 +290,75 @@ export class FaaSStarter implements IFaaSStarter {
     return context;
   }
 
-  private async formatMiddlewares(
-    middlewares: Array<IMiddleware<FaaSContext>>
-  ) {
-    const mwArr = [];
-    for (const mw of middlewares) {
-      if (typeof mw === 'function') {
-        mwArr.push(mw);
+  private defineApplicationProperties(app): IFaaSApplication {
+    return Object.assign(app, {
+      getBaseDir: () => {
+        return this.baseDir;
+      },
+
+      getAppDir: () => {
+        return this.appDir;
+      },
+
+      getEnv: () => {
+        return this.getApplicationContext()
+          .getEnvironmentService()
+          .getCurrentEnvironment();
+      },
+
+      getConfig: (key?: string) => {
+        return this.getApplicationContext()
+          .getConfigService()
+          .getConfiguration(key);
+      },
+
+      getLogger: () => {
+        return this.logger;
+      },
+
+      getMidwayType: () => {
+        return 'MIDWAY_FAAS';
+      },
+
+      getProcessType: () => {
+        return MidwayProcessTypeEnum.APPLICATION;
+      },
+      /**
+       * return init context value such as aliyun fc
+       */
+      getInitializeContext: () => {
+        return this.initializeContext;
+      },
+
+      getApplicationContext: () => {
+        return this.getApplicationContext();
+      },
+
+      useMiddleware: async (middlewares) => {
+        const newMiddlewares = await this.loadMiddleware(middlewares);
+        for (const mw of newMiddlewares) {
+          this.webApplication.use(mw);
+        }
+      }
+    });
+  }
+
+  private async loadMiddleware(middlewares) {
+    const newMiddlewares = [];
+    for(let middleware of middlewares) {
+      if (typeof middleware === 'function') {
+        newMiddlewares.push(middleware);
       } else {
         const middlewareImpl: IMiddleware<FaaSContext> = await this.getApplicationContext().getAsync(
-          mw
+          middleware
         );
         if (middlewareImpl && typeof middlewareImpl.resolve === 'function') {
-          mwArr.push(middlewareImpl.resolve());
+          newMiddlewares.push(middlewareImpl.resolve() as any);
         }
       }
     }
-    return mwArr;
-  }
 
-  /**
-   * return init context value such as aliyun fc
-   */
-  public getInitializeContext() {
-    return this.initializeContext;
-  }
-
-  /**
-   * push middleware to global middleware
-   * @param mw
-   */
-  public addGlobalMiddleware(mw) {
-    this.globalMiddleware.push(mw);
-  }
-
-  public getBaseDir(): string {
-    return this.baseDir;
-  }
-
-  public getAppDir(): string {
-    return this.appDir;
-  }
-
-  public getEnv(): string {
-    return this.getApplicationContext()
-      .getEnvironmentService()
-      .getCurrentEnvironment();
-  }
-
-  public getConfig(key?: string) {
-    return this.getApplicationContext()
-      .getConfigService()
-      .getConfiguration(key);
-  }
-
-  public getLogger() {
-    return this.logger;
-  }
-
-  public getMidwayType(): string {
-    return 'MIDWAY_FAAS';
-  }
-
-  public getProcessType(): MidwayProcessTypeEnum {
-    return MidwayProcessTypeEnum.APPLICATION;
+    return newMiddlewares;
   }
 }
 

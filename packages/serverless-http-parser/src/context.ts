@@ -1,5 +1,3 @@
-import { Request } from './request';
-import { Response } from './response';
 import {
   FaaSHTTPContext,
   FaaSHTTPRequest,
@@ -14,8 +12,6 @@ export class Context implements FaaSHTTPContext {
   private _originEvent;
 
   constructor(event, context) {
-    this._req = new Request(event);
-    this._res = new Response();
     this._originContext = context;
     this._originEvent = event;
   }
@@ -37,6 +33,14 @@ export class Context implements FaaSHTTPContext {
 
   get res(): FaaSHTTPResponse {
     return this._res;
+  }
+
+  set req(request) {
+    this._req = request;
+  }
+
+  set res(response) {
+    this._res = response;
   }
 
   get request(): FaaSHTTPRequest {
@@ -139,6 +143,10 @@ export class Context implements FaaSHTTPContext {
 
   get accept() {
     return this.req.accept;
+  }
+
+  get logger() {
+    return this.originContext.logger || console;
   }
 
   is(type, ...types) {
