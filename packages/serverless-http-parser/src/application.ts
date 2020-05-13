@@ -68,10 +68,13 @@ export class Application {
     const fn = compose(this.middleware);
     return (event, context, respond) => {
       // if (!this.listenerCount('error')) this.on('error', this.onerror);
+      const onerror = err => ctx.onerror(err);
       const ctx = this.createContext(event, context);
-      return fn(ctx).then(() => {
-        return respond(ctx);
-      });
+      return fn(ctx)
+        .then(() => {
+          return respond(ctx);
+        })
+        .catch(onerror);
     };
   }
 }

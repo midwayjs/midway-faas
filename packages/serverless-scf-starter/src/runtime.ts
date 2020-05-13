@@ -2,6 +2,13 @@ import { ServerlessLightRuntime } from '@midwayjs/runtime-engine';
 import { Application } from '@midwayjs/serverless-http-parser';
 import { SCF } from '@midwayjs/faas-typings';
 
+const isLocalEnv = () => {
+  return (
+    process.env.MIDWAY_SERVER_ENV === 'local' ||
+    process.env.NODE_ENV === 'local'
+  );
+};
+
 export class SCFRuntime extends ServerlessLightRuntime {
   app;
   respond;
@@ -41,46 +48,62 @@ export class SCFRuntime extends ServerlessLightRuntime {
             return this.defaultInvokeHandler.apply(this, [ctx, event]);
           }
           return handler.apply(handler, [ctx, event]);
-        }).then(result => {
-          let encoded = false;
-          if (result) {
-            ctx.body = result;
-          }
-
-          const setContentType = (type: string) => {
-            if (!ctx.type) {
-              ctx.type = type;
+        })
+          .then(result => {
+            let encoded = false;
+            if (result) {
+              ctx.body = result;
             }
-          };
 
-          if (typeof ctx.body === 'string') {
-            setContentType('text/plain');
-          }
-
-          if (Buffer.isBuffer(ctx.body)) {
-            encoded = true;
-            setContentType('application/octet-stream');
-            ctx.body = ctx.body.toString('base64');
-          } else if (typeof ctx.body === 'object') {
-            setContentType('application/json');
-            ctx.body = JSON.stringify(ctx.body);
-          }
-
-          const newHeader = {};
-          for (const key in ctx.res.headers) {
-            // The length after base64 is wrong.
-            if (!['content-length'].includes(key)) {
-              newHeader[key] = ctx.res.headers[key];
+            if (ctx.body === null || ctx.body === 'undefined') {
+              ctx.body = '';
+              ctx.type = 'text';
+              ctx.status = 204;
             }
-          }
 
-          return {
-            isBase64Encoded: encoded,
-            statusCode: ctx.status,
-            headers: newHeader,
-            body: ctx.body,
-          };
-        });
+            const setContentType = (type: string) => {
+              if (!ctx.type) {
+                ctx.type = type;
+              }
+            };
+
+            if (typeof ctx.body === 'string') {
+              setContentType('text/plain');
+            }
+
+            if (Buffer.isBuffer(ctx.body)) {
+              encoded = true;
+              setContentType('application/octet-stream');
+              ctx.body = ctx.body.toString('base64');
+            } else if (typeof ctx.body === 'object') {
+              setContentType('application/json');
+              ctx.body = JSON.stringify(ctx.body);
+            }
+
+            const newHeader = {};
+            for (const key in ctx.res.headers) {
+              // The length after base64 is wrong.
+              if (!['content-length'].includes(key)) {
+                newHeader[key] = ctx.res.headers[key];
+              }
+            }
+
+            return {
+              isBase64Encoded: encoded,
+              statusCode: ctx.status,
+              headers: newHeader,
+              body: ctx.body,
+            };
+          })
+          .catch(err => {
+            ctx.logger.error(err);
+            return {
+              isBase64Encoded: false,
+              statusCode: 500,
+              headers: {},
+              body: isLocalEnv() ? err.stack : 'Internal Server Error',
+            };
+          });
       },
     ]);
   }
