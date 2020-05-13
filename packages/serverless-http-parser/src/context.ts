@@ -31,12 +31,12 @@ export class Context implements FaaSHTTPContext {
     return this._req;
   }
 
-  get res(): FaaSHTTPResponse {
-    return this._res;
-  }
-
   set req(request) {
     this._req = request;
+  }
+
+  get res(): FaaSHTTPResponse {
+    return this._res;
   }
 
   set res(response) {

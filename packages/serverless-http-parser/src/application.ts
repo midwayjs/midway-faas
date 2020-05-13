@@ -70,9 +70,11 @@ export class Application {
       // if (!this.listenerCount('error')) this.on('error', this.onerror);
       const onerror = err => ctx.onerror(err);
       const ctx = this.createContext(event, context);
-      return fn(ctx).then(() => {
-        return respond(ctx);
-      }).catch(onerror);
+      return fn(ctx)
+        .then(() => {
+          return respond(ctx);
+        })
+        .catch(onerror);
     };
   }
 }

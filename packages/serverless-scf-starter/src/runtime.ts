@@ -35,7 +35,7 @@ export class SCFRuntime extends ServerlessLightRuntime {
     return this.respond.apply(this.respond, [
       event,
       context,
-      (ctx) => {
+      ctx => {
         return this.invokeHandlerWrapper(ctx, async () => {
           if (!handler) {
             return this.defaultInvokeHandler.apply(this, [ctx, event]);
@@ -81,7 +81,7 @@ export class SCFRuntime extends ServerlessLightRuntime {
             body: ctx.body,
           };
         });
-      }
+      },
     ]);
   }
 
@@ -95,7 +95,7 @@ export class SCFRuntime extends ServerlessLightRuntime {
     // 其他事件场景
     return this.invokeHandlerWrapper(context, async () => {
       if (!handler) {
-        return this.defaultInvokeHandler.apply(this, args);
+        return this.defaultInvokeHandler(...args);
       }
       return handler.apply(handler, args);
     });

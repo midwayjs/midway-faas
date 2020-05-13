@@ -11,7 +11,12 @@ import {
   MidwayRequestContainer,
   REQUEST_OBJ_CTX_KEY,
 } from '@midwayjs/core';
-import { APPLICATION_KEY, FUNC_KEY, LOGGER_KEY, PLUGIN_KEY, } from '@midwayjs/decorator';
+import {
+  APPLICATION_KEY,
+  FUNC_KEY,
+  LOGGER_KEY,
+  PLUGIN_KEY,
+} from '@midwayjs/decorator';
 import SimpleLock from '@midwayjs/simple-lock';
 import * as compose from 'koa-compose';
 
@@ -152,10 +157,10 @@ export class FaaSStarter implements IFaaSStarter {
 
       if (funOptions && funOptions.mod) {
         // invoke middleware, just for http
-        let fnMiddlewere = [].concat(funOptions.middleware);
+        const fnMiddlewere = [].concat(funOptions.middleware);
         if (fnMiddlewere.length) {
           const mw: any[] = await this.loadMiddleware(fnMiddlewere);
-          mw.push(async (ctx) => {
+          mw.push(async ctx => {
             // invoke handler
             const result = await this.invokeHandler(funOptions, ctx, args);
             if (!ctx.body) {
@@ -190,7 +195,7 @@ export class FaaSStarter implements IFaaSStarter {
       this.defaultHandlerMethod;
     if (funModule[handlerName]) {
       // invoke real method
-      return funModule[handlerName].apply(funModule, args);
+      return funModule[handlerName](...args);
     }
   }
 
@@ -232,14 +237,14 @@ export class FaaSStarter implements IFaaSStarter {
           descriptor;
           middleware: string[];
         }> = getClassMetadata(FUNC_KEY, funModule);
-        funOptions.map((opts) => {
+        funOptions.map(opts => {
           // { method: 'handler', data: 'index.handler' }
           const handlerName = opts.funHandler
             ? // @Func(key), if key is set
               // or @Func({ handler })
-            opts.funHandler
+              opts.funHandler
             : // else use ClassName.mehtod as handler key
-            covertId(funModule.name, opts.key);
+              covertId(funModule.name, opts.key);
           this.funMappingStore.set(handlerName, {
             middleware: opts.middleware || [],
             mod: funModule,
@@ -257,7 +262,7 @@ export class FaaSStarter implements IFaaSStarter {
 
       // load global web middleware
       const globalMW = await this.loadMiddleware(this.globalMiddleware);
-      for(const mw of globalMW) {
+      for (const mw of globalMW) {
         this.webApplication.use(mw as any);
       }
 
@@ -334,18 +339,18 @@ export class FaaSStarter implements IFaaSStarter {
         return this.getApplicationContext();
       },
 
-      useMiddleware: async (middlewares) => {
+      useMiddleware: async middlewares => {
         const newMiddlewares = await this.loadMiddleware(middlewares);
         for (const mw of newMiddlewares) {
           this.webApplication.use(mw);
         }
-      }
+      },
     });
   }
 
   private async loadMiddleware(middlewares) {
     const newMiddlewares = [];
-    for(let middleware of middlewares) {
+    for (const middleware of middlewares) {
       if (typeof middleware === 'function') {
         newMiddlewares.push(middleware);
       } else {

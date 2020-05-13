@@ -159,20 +159,24 @@ describe('test/index.test.ts', () => {
   });
 
   it('test custom global middleware', async () => {
-    const {start} = require('../../serverless-scf-starter/src');
+    const { start } = require('../../serverless-scf-starter/src');
     const runtime = await start();
     const starter = new FaaSStarter({
       baseDir: join(__dirname, './fixtures/base-app-middleware'),
       applicationAdapter: runtime,
     });
     await starter.start();
-    const data = await runtime.asyncEvent(starter.handleInvokeWrapper('index.handler'))({
+    const data = await runtime.asyncEvent(
+      starter.handleInvokeWrapper('index.handler')
+    )(
+      {
         text: 'hello',
         httpMethod: 'GET',
         headers: {},
-        requestContext: {}
+        requestContext: {},
       },
-      {text: 'a'});
+      { text: 'a' }
+    );
 
     assert(data.body === 'ahello555');
   });
