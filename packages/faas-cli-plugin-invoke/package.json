@@ -8,7 +8,7 @@
     "@midwayjs/faas-util-ts-compile": "^0.3.0",
     "@midwayjs/fcli-command-core": "^0.3.3",
     "@midwayjs/locate": "^1.0.3",
-    "@midwayjs/mwcc": "^0.2.2",
+    "@midwayjs/mwcc": "0.3.0-nightly.16",
     "@midwayjs/runtime-engine": "^0.3.0",
     "@midwayjs/runtime-mock": "^0.3.0",
     "@midwayjs/serverless-fc-starter": "^0.3.5",

@@ -1,9 +1,8 @@
-import { findAndParseTsConfig } from '@midwayjs/mwcc';
+import { Program } from '@midwayjs/mwcc';
 
 let ts;
 interface IOptions {
-  baseDir: string;
-  sourceDir: string | string[];
+  program: Program;
   spec?: any;
 }
 
@@ -17,21 +16,7 @@ class CodeAnalysis {
 
   async start() {
     this.loadSpec();
-
-    const parsedCli = findAndParseTsConfig(
-      this.options.baseDir,
-      /** outDir */ undefined,
-      /** configName */ undefined,
-      /** hintConfig */ undefined,
-      /** overrideConfig */ {
-        include: [].concat(this.options.sourceDir),
-        compilerOptions: {
-          rootDir: '',
-        },
-      }
-    );
-    const compilerOptions = parsedCli.options;
-    const program = ts.createProgram(parsedCli.fileNames, compilerOptions);
+    const program = this.options.program;
     this.checker = program.getTypeChecker();
     for (const sourceFile of program.getSourceFiles()) {
       if (!sourceFile.isDeclarationFile) {

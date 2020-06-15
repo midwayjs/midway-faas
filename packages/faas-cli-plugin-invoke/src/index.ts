@@ -5,7 +5,12 @@ import {
   copyFiles,
   CodeAny,
 } from '@midwayjs/faas-util-ts-compile';
-import { compileInProject } from '@midwayjs/mwcc';
+import {
+  CompilerHost,
+  Program,
+  resolveTsConfigFile,
+  MwccConfig,
+} from '@midwayjs/mwcc';
 import { writeWrapper } from '@midwayjs/serverless-spec-builder';
 import { createRuntime } from '@midwayjs/runtime-mock';
 import * as FCTrigger from '@midwayjs/serverless-fc-trigger';
@@ -20,9 +25,9 @@ import {
   remove,
   readFileSync,
   copy,
-  mkdirSync,
   ensureDirSync,
   symlinkSync,
+  mkdirSync,
 } from 'fs-extra';
 export * from './invoke';
 const commonLock: any = {};
@@ -43,7 +48,12 @@ export class FaaSInvokePlugin extends BasePlugin {
   analysisCodeInfoPath: string;
   entryInfo: any;
   fileChanges: any;
-  relativeTsCodeRoot: string;
+  analyzedTsCodeRoot: string;
+
+  mwccHintConfig: MwccConfig = {};
+  compilerHost: CompilerHost;
+  program: Program;
+
   get defaultTmpFaaSOut() {
     return resolve(
       this.core.config.servicePath,
@@ -58,8 +68,8 @@ export class FaaSInvokePlugin extends BasePlugin {
         'locator', // 分析目录结构
         'copyFile', // 拷贝文件
         'checkFileChange', // 检查文件是否更新
-        'analysisCode', // 代码分析
-        'compile', // ts 编译
+        'compile', // ts 代码编译
+        'emit', // ts 代码输出
         'entry', // 生成执行入口
         'getInvoke', // 获取runtime
         'callInvoke', // 进行调用
@@ -94,8 +104,8 @@ export class FaaSInvokePlugin extends BasePlugin {
     'invoke:locator': this.locator.bind(this),
     'invoke:copyFile': this.copyFile.bind(this),
     'invoke:checkFileChange': this.checkFileChange.bind(this),
-    'invoke:analysisCode': this.analysisCode.bind(this),
     'invoke:compile': this.compile.bind(this),
+    'invoke:emit': this.emit.bind(this),
     'invoke:entry': this.entry.bind(this),
     'invoke:getInvoke': this.getInvoke.bind(this),
     'invoke:callInvoke': this.callInvoke.bind(this),
@@ -206,8 +216,17 @@ export class FaaSInvokePlugin extends BasePlugin {
       '.faasTSBuildInfo.log'
     ));
     this.analysisCodeInfoPath = resolve(this.buildLogDir, '.faasFuncList.log');
-    this.relativeTsCodeRoot =
-      relative(this.baseDir, this.codeAnalyzeResult.tsCodeRoot) || '.';
+
+    let directoryToScan: string;
+    const tmpOutDir = resolve(this.defaultTmpFaaSOut, 'src');
+    if (existsSync(tmpOutDir)) {
+      this.analyzedTsCodeRoot = tmpOutDir;
+      directoryToScan = tmpOutDir;
+    } else {
+      this.analyzedTsCodeRoot = this.codeAnalyzeResult.tsCodeRoot;
+      directoryToScan = relative(this.baseDir, this.analyzedTsCodeRoot);
+    }
+
     const isTsMode = this.checkIsTsMode();
     if (isTsMode) {
       process.env.MIDWAY_TS_MODE = 'true';
@@ -227,11 +246,7 @@ export class FaaSInvokePlugin extends BasePlugin {
     if (existsSync(buildLockPath)) {
       this.core.debug('buildLockPath', buildLockPath);
       this.fileChanges = await compareFileChange(
-        [
-          specFile,
-          `${this.relativeTsCodeRoot}/**/*`,
-          `${this.defaultTmpFaaSOut}/src/**/*`, // 允许用户将ts代码生成到此文件夹
-        ],
+        [specFile, `${directoryToScan}/**/*`],
         [buildLockPath],
         { cwd: this.baseDir }
       );
@@ -244,10 +259,7 @@ export class FaaSInvokePlugin extends BasePlugin {
         return;
       }
     } else {
-      this.fileChanges = [
-        `${this.relativeTsCodeRoot}/**/*`,
-        `${this.defaultTmpFaaSOut}/src/**/*`,
-      ];
+      this.fileChanges = [`${directoryToScan}/**/*`];
       // 如果没有构建锁，但是存在代码分析，这时候认为上一次是获取了函数列表
       // if (existsSync(this.analysisCodeInfoPath)) {
       //   this.getAnaLysisCodeInfo();
@@ -257,22 +269,38 @@ export class FaaSInvokePlugin extends BasePlugin {
     this.setLock(this.buildLockPath, LOCK_TYPE.WAITING);
   }
 
-  async analysisCode() {
+  async compile() {
     // 如果在代码分析中止，那么可以从store中获取function信息
     this.setStore('functions', this.core.service.functions);
+
     // 如果跳过了ts编译，那么也就是说曾经编译过，那么也跳过代码分析
     if (this.skipTsBuild) {
       return;
     }
+
+    const dest = join(this.buildDir, 'dist');
+    const { config } = resolveTsConfigFile(
+      this.baseDir,
+      dest,
+      undefined,
+      undefined,
+      {
+        include: this.fileChanges,
+        compilerOptions: {
+          incremental: this.options.incremental,
+          rootDir: this.analyzedTsCodeRoot,
+        },
+      }
+    );
+    this.compilerHost = new CompilerHost(this.baseDir, config);
+    this.program = new Program(this.compilerHost);
+
     // 当spec上面没有functions的时候，启动代码分析
     if (!this.core.service.functions) {
+      // TODO: only analyze user source codes.
       const codeAnyParams = {
         spec: this.core.service,
-        baseDir: this.baseDir,
-        sourceDir: [
-          `${this.relativeTsCodeRoot}/**/*`,
-          `${this.defaultTmpFaaSOut}/src/**/*`,
-        ],
+        program: this.program,
       };
       this.core.debug('Code Analysis Params', codeAnyParams);
       const newSpec = await CodeAny(codeAnyParams);
@@ -284,9 +312,7 @@ export class FaaSInvokePlugin extends BasePlugin {
         JSON.stringify(newSpec.functions)
       );
     }
-    if (
-      this.core.pluginManager.options.stopLifecycle === 'invoke:analysisCode'
-    ) {
+    if (this.core.pluginManager.options.stopLifecycle === 'invoke:compile') {
       // LOCK_TYPE.INITIAL 是因为跳过了ts编译，下一次来的时候还是得进行ts编译
       this.setLock(this.buildLockPath, LOCK_TYPE.INITIAL);
     }
@@ -305,43 +331,20 @@ export class FaaSInvokePlugin extends BasePlugin {
       }
     }
   }
-  async compile() {
+
+  async emit() {
     const isTsMode = this.checkIsTsMode();
     if (isTsMode || this.skipTsBuild) {
       return;
     }
 
-    this.core.debug('Compile', this.codeAnalyzeResult);
+    this.core.debug('emit', this.codeAnalyzeResult);
     try {
+      this.program.emit();
+
       const dest = join(this.buildDir, 'dist');
       if (!existsSync(dest)) {
         mkdirSync(dest);
-      }
-      const source = [];
-      const tmp = [];
-      this.fileChanges.forEach((file: string) => {
-        if (file.indexOf(this.defaultTmpFaaSOut) !== -1) {
-          tmp.push(file);
-        } else {
-          source.push(file);
-        }
-      });
-      if (source.length) {
-        await compileInProject(this.baseDir, dest, undefined, {
-          include: source,
-          compilerOptions: {
-            incremental: this.options.incremental,
-            rootDir: this.codeAnalyzeResult.tsCodeRoot,
-          },
-        });
-      }
-      if (tmp.length) {
-        await compileInProject(this.baseDir, dest, undefined, {
-          include: tmp,
-          compilerOptions: {
-            rootDir: resolve(this.defaultTmpFaaSOut, 'src'),
-          },
-        });
       }
     } catch (e) {
       await remove(this.buildLockPath);

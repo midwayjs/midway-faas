@@ -1,11 +1,15 @@
 import { CodeAny } from '../src/codeAnalysis';
 import { resolve } from 'path';
 import * as assert from 'assert';
+import { Program, CompilerHost, resolveTsConfigFile } from '@midwayjs/mwcc';
 describe('/test/code.test.ts', () => {
   it('compareFileChange', async () => {
+    const projectDir = resolve(__dirname, './fixtures/baseApp');
+    const { config } = resolveTsConfigFile(projectDir);
+    const compilerHost = new CompilerHost(projectDir, config);
+    const program = new Program(compilerHost);
     const newSpec = await CodeAny({
-      baseDir: resolve(__dirname, './fixtures/baseApp'),
-      sourceDir: resolve(__dirname, './fixtures/baseApp/src'),
+      program,
     });
     assert(newSpec.functions);
     assert(newSpec.functions['no-handler-and-path'].events.length === 1);
