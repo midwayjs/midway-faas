@@ -5,12 +5,7 @@ import {
   copyFiles,
   CodeAny,
 } from '@midwayjs/faas-util-ts-compile';
-import {
-  CompilerHost,
-  Program,
-  resolveTsConfigFile,
-  MwccConfig,
-} from '@midwayjs/mwcc';
+import { CompilerHost, Program, resolveTsConfigFile } from '@midwayjs/mwcc';
 import { writeWrapper } from '@midwayjs/serverless-spec-builder';
 import { createRuntime } from '@midwayjs/runtime-mock';
 import * as FCTrigger from '@midwayjs/serverless-fc-trigger';
@@ -50,9 +45,8 @@ export class FaaSInvokePlugin extends BasePlugin {
   fileChanges: any;
   analyzedTsCodeRoot: string;
 
-  mwccHintConfig: MwccConfig = {};
-  compilerHost: CompilerHost;
-  program: Program;
+  private compilerHost: CompilerHost;
+  private program: Program;
 
   get defaultTmpFaaSOut() {
     return resolve(
@@ -283,7 +277,7 @@ export class FaaSInvokePlugin extends BasePlugin {
       this.baseDir,
       dest,
       undefined,
-      undefined,
+      this.getStore('mwccHintConfig', 'global'),
       {
         include: this.fileChanges,
         compilerOptions: {

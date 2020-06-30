@@ -20,12 +20,7 @@ import {
 import * as micromatch from 'micromatch';
 import { commonPrefix, formatLayers } from './utils';
 import { copyFiles, CodeAny } from '@midwayjs/faas-util-ts-compile';
-import {
-  MwccConfig,
-  CompilerHost,
-  Program,
-  resolveTsConfigFile,
-} from '@midwayjs/mwcc';
+import { CompilerHost, Program, resolveTsConfigFile } from '@midwayjs/mwcc';
 import { exec } from 'child_process';
 import * as archiver from 'archiver';
 import { AnalyzeResult, Locator } from '@midwayjs/locate';
@@ -44,9 +39,8 @@ export class PackagePlugin extends BasePlugin {
   integrationDistTempDirectory = 'integration_dist'; // 一体化构建的临时目录
   zipCodeDefaultName = 'serverless.zip';
 
-  mwccHintConfig: MwccConfig = {};
-  compilerHost: CompilerHost;
-  program: Program;
+  private compilerHost: CompilerHost;
+  private program: Program;
 
   commands = {
     package: {
@@ -329,7 +323,7 @@ export class PackagePlugin extends BasePlugin {
       this.servicePath,
       join(this.midwayBuildPath, 'dist'),
       undefined,
-      this.mwccHintConfig,
+      this.getStore('mwccHintConfig', 'global'),
       {
         compilerOptions: {
           sourceRoot: '../src',
