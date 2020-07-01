@@ -10,7 +10,8 @@ const cliFun = async argv => {
       process.exit();
     })
     .catch(e => {
-      process.exit();
+      process.exitCode = 1;
+      process.exit(1);
     });
 };
 
